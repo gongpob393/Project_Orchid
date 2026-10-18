@@ -1,24 +1,26 @@
-# idea_16_orchid_mist.py - พ่นหมอกโรงกล้วยไม้: อากาศแห้งตอนบ่าย สั่งพ่นหมอกจากมือถือ ปั๊มหมอกมีเพดานเวลา
+# idea_16_orchid_mist_web.py - พ่นหมอกโรงกล้วยไม้: อากาศแห้งตอนบ่าย สั่งพ่นหมอกจากมือถือ ปั๊มหมอกมีเพดานเวลา
 # ไฟล์นี้เป็นจุดเริ่มต้นเท่านั้น ห้ามส่งตามนี้ ทีมต้องต่อยอดเองอย่างน้อย 3 อย่าง (ดู PROJECT_BRIEF_lite_th.md)
 # ต่อยอดจาก s2/sf2_03_remote_pump.py · ปั๊ม = ปั๊มหมอก, soil = ความชื้นอากาศ (VR1), tank = ถังหมอก (VR4)
 # ภาพหลัก = วงแหวนใหญ่ความชื้นอากาศ เปลี่ยนสีตามช่วง
-# MQTT: ของเดิม sf2_03 ครบ (สัญญา 3.2, 4) + 2 คีย์ใหม่ที่บอร์ดคิดเอง
-#   bursts = พ่นหมอกไปแล้วกี่รอบ  rh_min = ความชื้นอากาศต่ำสุดตั้งแต่เปิดเครื่อง
 #
-# เวอร์ชันนี้เพิ่ม:
-#   1) หน้าจอใหม่: แถบหัว การ์ดแยกส่วน ป้ายช่วงความชื้น ป้ายโหมด
-#   2) เสียงเตือนเมื่อความชื้นอยู่นอกช่วง "พอดี" (แห้ง/ชื้นเกิน เสียงต่างกัน) เตือนซ้ำทุก ALERT_EVERY_MS
-#   3) VR3 = ปุ่มหมุนฉุกเฉิน: หมุนแล้วบอร์ดใช้ค่า VR3 เป็น % ความชื้นแทน VR1 (โหมดมือ)
-#      กด SW6 เพื่อกลับโหมดอัตโนมัติ (VR1)
+# เวอร์ชันนี้ (ใช้กับหน้าเว็บ idea_16_cyber.html / แอป orchid-app ได้ครบ):
+#   1) หน้าจอใหม่: แถบหัว การ์ดแยกส่วน ป้ายช่วงความชื้น ป้ายโหมด ป้ายสถานะปุ่ม
+#   2) เสียงเตือนเมื่อความชื้นอยู่นอกช่วง "พอดี" (แห้ง/ชื้นเกิน เสียงต่างกัน) ดัง ALERT_SOUND_MS
+#   3) VR3 = ปุ่มหมุนฉุกเฉิน: หมุนแล้วใช้ค่า VR3 เป็น % ความชื้นแทน VR1 (โหมดมือ) กด SW6 เพื่อกลับ
+#   4) อุณหภูมิจำลองด้วย VR2 + VPD + ระดับความเครียดของพืช
+#   5) พ่นอัตโนมัติเมื่อแห้ง (เปิด/ปิดได้จากเว็บ): พ่น AUTO_SEC วิ แล้วพัก AUTO_WAIT_MS
+#   6) ส่งขึ้นเว็บครบ: soil tank pump n bursts rh_min + temp_c vpd stress auto auto_wait auto_sec src dry wet
+#   7) ปุ่ม SW5/SW6 สุ่มอ่านถี่ขึ้น กดแล้วตอบทุกครั้ง และมีป้าย SW5/SW6 บนหัวจอ (กดค้างต้องขึ้น ON)
 # เกณฑ์ = ค่าสาธิตในห้องเรียน ไม่ใช่คำแนะนำทางเกษตร
 #
-# ลองเล่น  : สั่งจาก project/web/idea_16.html?team=<เลขกลุ่ม>
+# ลองเล่น  : เปิด idea_16_cyber.html?team=team05
 # ต้องแก้ก่อนรัน: WIFI_SSID, WIFI_PASS, TEAM (เลขกลุ่ม)
 # กับดัก    : get_message() ไม่บล็อก ต้องถามทุก 100 ms
 
 import buttons
 import gpio
 import json
+import math
 import mqtt
 import pots
 import rgbmatrix
@@ -50,7 +52,14 @@ ALERT_SOUND_MS = 5000                  # เสียงเตือนดัง
 ALERT_EVERY_MS = 20000                 # ความชื้นผิดช่วงต่อเนื่อง เริ่มเตือนรอบใหม่ทุกกี่ ms (ต้องมากกว่า ALERT_SOUND_MS)
 ALERT_VOLUME = 40                      # ดังกว่าเสียงทั่วไป (VOLUME) เพื่อให้ได้ยินในโรงเรือน
 ALERT_NOTE_MS = 300                    # ช่วงห่างระหว่างโน้ตแต่ละตัวของเสียงเตือน
-SW_AUTO_INDEX = 0                      # ปุ่มกลับโหมดอัตโนมัติ: บอร์ดมีปุ่มแค่ index 0 กับ 1 (1 = หยุดพ่น) จึงใช้ 0
+SW_STOP_INDEX = 1                      # SW5 (ปุ่มล่าง) = หยุดพ่นฉุกเฉิน · ถ้ากดแล้วไม่ตอบ ลองสลับเลข 0/1 ของสองบรรทัดนี้
+SW_AUTO_INDEX = 0                      # SW6 (ปุ่มบน) = กลับโหมดอัตโนมัติ
+TEMP_OFFSET = -7.0                     # ใช้ปรับค่าถ้าต่อเซนเซอร์อุณหภูมิจริง (ตอนนี้จำลองด้วย VR2 ยังไม่ได้ใช้)
+VPD_LOW, VPD_HIGH, VPD_MARGIN = 0.5, 1.2, 0.3
+AUTO_DEFAULT = True                    # พ่นอัตโนมัติเมื่อแห้ง (ตั้งเป็น False ถ้าอยากให้คนเปิดเอง) เปิด/ปิดจากเว็บได้
+AUTO_SEC, AUTO_WAIT_MS = 10, 5000      # พ่นกี่วิ / พักกี่ ms ก่อนพ่นซ้ำ (โจทย์แนะนำพัก 2 นาที = 120000)
+TEMP_POT = 1                           # VR2 = pots 1 จำลองอุณหภูมิ
+TEMP_MIN_C, TEMP_MAX_C = 15, 40        # ช่วงอุณหภูมิที่ VR2 จำลอง
 
 SPEAKER = 60
 VOLUME = 20                            # โรงกล้วยไม้เงียบ เสียงเบากว่าเรื่องอื่น
@@ -69,11 +78,20 @@ TUNES = {"tap": (81,), "start": (76, 83), "stop": (83, 76), "good": (76, 81, 88)
          "alert_wet": (72, 84, 72),     # ชื้นเกิน: สูง-ต่ำสลับ
          "manual": (81, 88)}            # สลับเข้าโหมดมือ
 
+BTNS = []                              # ปุ่มที่ต้องสุ่มอ่านตลอด (main ใส่ให้)
+
+
+def tick():
+    # สุ่มอ่านปุ่ม เรียกแทรกระหว่างงานหนักของลูป กดสั้น ๆ จะได้ไม่หลุด
+    for b in BTNS:
+        b.sample()
+
 
 def beep(name):
     for n in TUNES[name]:
         ui.tone(n, ui.WAVE_SINE, VOLUME, 90)
-        time.sleep_ms(100)
+        wait_ms(100, BTNS)             # รอแบบยังสุ่มอ่านปุ่มอยู่ (เดิม sleep เฉย ๆ ทำให้กดตอนมีเสียงแล้วหลุด)
+
 
 def alarm_note(kind, i):
     # เล่นโน้ตเดียวของเสียงเตือน ไม่บล็อก (ให้ลูปหลักวนต่อ ปุ่ม SW5 และ MQTT ยังทำงานระหว่างเสียงดัง)
@@ -216,6 +234,29 @@ def band_id(rh, prev):
     return 1
 
 
+def read_temp():
+    # จำลองอุณหภูมิด้วย VR2 ถ้ามีเซนเซอร์จริงให้แก้ตรงนี้ที่เดียว (แล้วบวก TEMP_OFFSET ถ้าต้องปรับค่า)
+    return TEMP_MIN_C + knob_percent(TEMP_POT) * (TEMP_MAX_C - TEMP_MIN_C) / 100
+
+
+def calc_vpd(t, rh):
+    # VPD (kPa) = ความดันไอน้ำอิ่มตัว x (1 - RH/100)
+    svp = 0.6108 * math.exp(17.27 * t / (t + 237.3))
+    return svp * (1 - rh / 100)
+
+
+# ความเครียดของพืช: 0 = ไม่เครียด, 1 = เริ่มเครียด, 2 = เครียด -> (คำบนจอ, สี)
+STRESS = (("ไม่เครียด", COL_PETAL), ("เริ่มเครียด", COL_DRY), ("เครียด!", COL_BAD))
+
+
+def stress_id(vpd):
+    if VPD_LOW <= vpd <= VPD_HIGH:
+        return 0
+    if VPD_LOW - VPD_MARGIN <= vpd <= VPD_HIGH + VPD_MARGIN:
+        return 1
+    return 2
+
+
 def handle_command(raw, tank):
     # ตัดสินคำสั่งหนึ่งใบ -> (ทำอะไร, วินาทีหรือข้อความ, ข้อความขึ้นจอ, สี)  ไม่แตะของจริงในนี้
     try:
@@ -234,6 +275,8 @@ def handle_command(raw, tank):
     if act in ("led", "pump"):
         sec = pump_seconds(cmd.get("sec", PUMP_DEFAULT_S))
         return "on", sec, "พ่นหมอก %d วิ" % sec, COL_MIST
+    if act == "auto":                  # เปิด/ปิดพ่นอัตโนมัติจากเว็บ (ไม่แตะปั๊มโดยตรง)
+        return "auto", 1 if on else 0, "พ่นอัตโนมัติ: " + ("เปิด" if on else "ปิด"), COL_PINK
     if act == "beep":
         return "beep", 0, "เจ้าของสวนกล้วยไม้เรียก!", COL_PINK
     if act == "say":
@@ -274,18 +317,31 @@ def connect_farm(w):
     return ""
 
 
-def send_report(n, rh, tank, running, bursts, rh_min):
+def send_report(n, rh, tank, running, bursts, rh_min, extra):
     # publish ตอนสายหลุดโยน OSError  (soil = ความชื้นอากาศ เพื่อให้สัญญาเดิมใช้ได้)
     try:
-        mqtt.publish(TOPIC, json.dumps({"id": TEAM, "n": n, "soil": rh, "tank": tank,
-                                        "pump": 1 if running else 0, "sim": "soil tank",
-                                        "bursts": bursts, "rh_min": rh_min}))
+        body = {"id": TEAM, "n": n, "soil": rh, "tank": tank,
+                "pump": 1 if running else 0, "sim": "soil tank temp_c",
+                "bursts": bursts, "rh_min": rh_min}
+        body.update(extra)             # temp_c vpd stress auto auto_wait auto_sec src dry wet
+        mqtt.publish(TOPIC, json.dumps(body))
         return True
     except OSError:
         return False
 
 
 # ---- 5) หน้าจอ ----
+_last = {}
+
+
+def changed(key, val):
+    # True เฉพาะตอนค่าเปลี่ยนจากครั้งก่อน ใช้ข้ามการวาดจอที่ไม่จำเป็น (ลูปจะได้กลับมาสุ่มอ่านปุ่มเร็วขึ้น)
+    if _last.get(key) == val:
+        return False
+    _last[key] = val
+    return True
+
+
 def show_link(w, ok):
     w["mq"].value(1 if ok else 0)
     w["mq_t"].text("MQTT: เชื่อมต่อแล้ว" if ok else "MQTT: ออฟไลน์")
@@ -308,6 +364,7 @@ def build_screen():
     w = {}
     w["mq"] = ui.Led(x=606, y=15, w=18, h=18, color=COL_PETAL, value=0)
     w["mq_t"] = ui.Label("MQTT: ออฟไลน์", x=632, y=13, color=COL_DIM, value=16)
+    w["btn"] = ui.Label("SW5 --  SW6 --", x=420, y=14, color=COL_DIM, value=16)   # สถานะปุ่มสด ๆ กดแล้วต้องขึ้น ON
 
     # การ์ดซ้าย: ความชื้นอากาศ
     card(x=12, y=60, w=272, h=284, color=COL_CARD, min=COL_PETAL, max=14, value=1)
@@ -341,7 +398,14 @@ def build_screen():
              x=310, y=308, color=COL_DRY, value=14)
     ui.Label("VR3 = หมุนตั้ง % ความชื้นเองฉุกเฉิน", x=310, y=326, color=COL_PINK, value=14)
 
-    w["note"] = ui.Label("ยังไม่มีคำสั่ง", x=12, y=356, color=COL_DIM)
+    # การ์ดล่าง: อุณหภูมิ / VPD / ความเครียด / โหมดพ่น (สมมติจอสูง 480 ถ้าโดนตัดให้ลด y)
+    card(x=12, y=352, w=772, h=56, color=COL_CARD, min=COL_PINK, max=14, value=1)
+    w["temp"] = ui.Label("อุณหภูมิ -- C", x=28, y=370, color=COL_TEXT, value=16)
+    w["vpd"] = ui.Label("VPD -- kPa", x=220, y=370, color=COL_DIM, value=16)
+    w["stress"] = ui.Label("ความเครียด: --", x=390, y=370, color=COL_DIM, value=16)
+    w["auto"] = ui.Label("พ่นอัตโนมัติ: --", x=600, y=370, color=COL_MIST, value=16)
+
+    w["note"] = ui.Label("ยังไม่มีคำสั่ง", x=12, y=420, color=COL_DIM)
     ui.poll()
     return w
 
@@ -359,6 +423,8 @@ def show_pump(w, sec_left):
 
 
 def show_air(w, rh, band, tank, rh_min, rh_max, manual):
+    if not changed("air", (rh, band, tank, rh_min, rh_max, manual)):
+        return
     word, col = BANDS[band]
     w["arc"].value(rh)
     w["arc"].color(col)
@@ -375,6 +441,17 @@ def show_air(w, rh, band, tank, rh_min, rh_max, manual):
     w["tank_bar"].value(tank)
     w["tank_bar"].color(COL_MIST if tank >= TANK_MIN else COL_BAD)
     w["tank"].text("%d %%" % tank)
+
+
+def show_env(w, temp, vpd, stress, auto_on):
+    if not changed("env", (round(temp, 1), round(vpd, 2), stress, auto_on)):
+        return
+    word, col = STRESS[stress]
+    w["temp"].text("อุณหภูมิ %.1f C" % temp)
+    w["vpd"].text("VPD %.2f kPa" % vpd)
+    w["stress"].color(col)
+    w["stress"].text("ความเครียด: " + word)
+    w["auto"].text("พ่นอัตโนมัติ: " + ("เปิด" if auto_on else "ปิด"))
 
 
 # ---- 6) โปรแกรมหลัก ----
@@ -404,12 +481,12 @@ def act_on(w, raw, tank, now, pump_ms, pump_t0):
         beep("hit")
     elif do == "say" and arg and not pump_ms:
         rgbmatrix.scroll(arg, rgbmatrix.PURPLE, 80)
-    tune = {"deny": "bad", "off": "stop", "on": "start", "say": "tap"}.get(do)
+    tune = {"deny": "bad", "off": "stop", "on": "start", "say": "tap", "auto": "tap"}.get(do)
     if tune is not None:
         beep(tune)
     if text:
         show_note(w, text, col)
-    return pump_ms, pump_t0, do
+    return pump_ms, pump_t0, do, arg
 
 
 def main():
@@ -425,14 +502,18 @@ def main():
         stop(w, pump, problem)
     show_link(w, True)
     show_note(w, "ฟัง " + TOPIC_CMD, COL_PETAL)
-    stop_btn = Button(1)
+    stop_btn = Button(SW_STOP_INDEX)
     auto_btn = Button(SW_AUTO_INDEX)
+    BTNS.extend((stop_btn, auto_btn))
     got = n = pump_ms = pump_t0 = bursts = 0
     rh_min, rh_max = 100, 0            # ต่ำสุด/สูงสุดตั้งแต่เปิดเครื่อง
     shown = -1
     manual = False                     # True = ใช้ VR3 แทน VR1
     vr3_base = knob_percent(POT_MANUAL)  # ตำแหน่ง VR3 ตอนเริ่ม/ตอนกลับโหมดอัตโนมัติ
     band = 1
+    auto_on = AUTO_DEFAULT             # พ่นอัตโนมัติเมื่อแห้ง
+    auto_total = AUTO_SEC * 1000 + AUTO_WAIT_MS
+    t_auto = time.ticks_add(time.ticks_ms(), -auto_total)   # รอบแรกพ่นได้ทันที
     t_alert = t_note = time.ticks_ms()
     alarm_until, alarm_i = None, 0     # None = ไม่มีเสียงเตือนดังอยู่
     send_now, last_pump = True, 0      # send_now = มีเหตุการณ์ใหม่ ส่งรายงานทันที (รอบแรกส่งเลย เว็บจะขึ้นเร็ว)
@@ -441,16 +522,29 @@ def main():
     t_send = t0 = time.ticks_ms()
     while time.ticks_diff(time.ticks_ms(), t0) < LISTEN_MS:
         now = time.ticks_ms()
-        if stop_btn.pressed_now() and pump_ms:                      # SW5 ไม่ผ่านเน็ตเลย
-            pump_ms = 0
-            show_note(w, "หยุดพ่นฉุกเฉิน " + BTN_NAMES[0], COL_BAD)
-            beep("stop")
+        tick()
+        st = (stop_btn.down, auto_btn.down)
+        if changed("btn", st):          # ป้ายหัวจอ: กดค้างไว้แล้วต้องเห็น ON ถ้าไม่ขึ้นเลย แปลว่าเลขปุ่มไม่ตรงบอร์ด
+            w["btn"].text("%s %s  %s %s" % (BTN_NAMES[0], "ON" if st[0] else "--", BTN_NAMES[1], "ON" if st[1] else "--"))
+            w["btn"].color(COL_PINK if (st[0] or st[1]) else COL_DIM)
+        if stop_btn.pressed_now():                                  # SW5 ไม่ผ่านเน็ตเลย
+            if pump_ms:
+                pump_ms = 0
+                t_auto = now                                        # กันพ่นอัตโนมัติซ้ำทันทีหลังคนสั่งหยุด
+                show_note(w, "หยุดพ่นฉุกเฉิน " + BTN_NAMES[0], COL_BAD)
+                beep("stop")
+            else:                       # กดแล้วตอบทุกครั้ง จะได้รู้ว่าบอร์ดรับปุ่มแล้ว
+                show_note(w, BTN_NAMES[0] + ": ตอนนี้ปั๊มไม่ได้พ่นอยู่", COL_DIM)
+                beep("tap")
 
         # โหมดมือ: VR3 ขยับ = สลับเข้า, SW6 = กลับอัตโนมัติ
         vr3 = knob_percent(POT_MANUAL)
-        if auto_btn.pressed_now() and manual:
-            manual, vr3_base, send_now = False, vr3, True
-            show_note(w, "กลับโหมดอัตโนมัติ (VR1)", COL_MIST)
+        if auto_btn.pressed_now():
+            if manual:
+                manual, vr3_base, send_now = False, vr3, True
+                show_note(w, "กลับโหมดอัตโนมัติ (VR1)", COL_MIST)
+            else:
+                show_note(w, BTN_NAMES[1] + ": อยู่โหมดอัตโนมัติอยู่แล้ว (หมุน VR3 เพื่อเข้าโหมดมือ)", COL_DIM)
             beep("tap")
         if not manual and abs(vr3 - vr3_base) >= MANUAL_MOVE:
             manual, send_now = True, True
@@ -460,6 +554,9 @@ def main():
         rh = vr3 if manual else knob_percent(POT_AUTO)
         tank = knob_percent(3)
         rh_min, rh_max = min(rh_min, rh), max(rh_max, rh)
+        temp = read_temp()
+        vpd = calc_vpd(temp, rh)
+        stress = stress_id(vpd)
 
         # เสียงเตือนเมื่อความชื้นอยู่นอก "พอดี": เตือนทันทีที่เปลี่ยนช่วง แล้วซ้ำทุก ALERT_EVERY_MS
         new_band = band_id(rh, band)
@@ -485,19 +582,32 @@ def main():
             got += 1
             w["title"].text("ปั๊มหมอก (คำสั่ง %d)" % got)
             was_on = pump_ms
-            pump_ms, pump_t0, did = act_on(w, msg[1], tank, now, pump_ms, pump_t0)
+            pump_ms, pump_t0, did, darg = act_on(w, msg[1], tank, now, pump_ms, pump_t0)
+            if did == "auto":           # เว็บเปิด/ปิดพ่นอัตโนมัติ
+                auto_on, send_now = bool(darg), True
             if did == "say":            # ให้ข้อความเลื่อนบนจอ 8x8 ก่อน แล้วค่อยกลับมาโชว์หน้า
                 face_hold, face_dirty = now + SAY_HOLD_MS, True
             if pump_ms and not was_on:  # นับรอบเฉพาะตอนเริ่มพ่นใหม่ สั่งต่อเวลาไม่นับซ้ำ
                 bursts += 1
+                t_auto = now            # คนสั่งพ่นแล้ว พ่นอัตโนมัติต้องรอพักด้วย
                 w["bursts"].text("พ่นแล้ว %d รอบ" % bursts)
+
+        # พ่นอัตโนมัติ: เฉพาะตอนแห้ง (band 0) ปั๊มว่าง ถังพอ และพ้นช่วงพักแล้ว
+        if (auto_on and band == 0 and not pump_ms and tank >= TANK_MIN
+                and time.ticks_diff(now, t_auto) >= auto_total):
+            pump_ms, pump_t0, t_auto = AUTO_SEC * 1000, now, now
+            bursts += 1
+            w["bursts"].text("พ่นแล้ว %d รอบ" % bursts)
+            show_note(w, "พ่นอัตโนมัติ %d วิ (แห้ง)" % AUTO_SEC, COL_MIST)
+            beep("start")
+
         left = pump_ms - time.ticks_diff(now, pump_t0) if pump_ms else 0
         if pump_ms and (left <= 0 or tank < TANK_MIN):   # ปั๊มหมอกหยุดเองเมื่อครบเวลาหรือถังแห้ง
             pump_ms = 0
             show_note(w, "ครบเวลา หยุดพ่นเอง" if left <= 0 else "ถังหมอกแห้ง หยุดพ่นเอง", COL_MIST)
             beep("stop")
         set_led(pump, pump_ms)
-        if (1 if pump_ms else 0) != last_pump:     # ปั๊มเริ่ม/หยุด: บอกเว็บทันที ไม่ต้องรอรอบ 5 วินาที
+        if (1 if pump_ms else 0) != last_pump:     # ปั๊มเริ่ม/หยุด: บอกเว็บทันที ไม่ต้องรอรอบถัดไป
             last_pump, send_now = 1 if pump_ms else 0, True
         sec_left = (left + 999) // 1000 if pump_ms else 0     # ปัดขึ้น: สั่ง 10 วิ เริ่มนับที่ 10 ไม่ใช่ 11
         if sec_left != shown:
@@ -515,16 +625,24 @@ def main():
             if not drawn and not face_warned:
                 face_warned = True
                 show_note(w, "rgbmatrix ไม่มีฟังก์ชันวาดจุด แก้ PIXEL_FUNCS", COL_DRY)
+        tick()
         show_air(w, rh, band, tank, rh_min, rh_max, manual)
+        tick()
+        show_env(w, temp, vpd, stress, auto_on)
+        tick()
         gap = time.ticks_diff(now, t_send)
-        if gap >= SEND_MS or (send_now and gap >= MIN_GAP_MS):   # ตามรอบ 5 วินาที หรือมีเหตุการณ์ใหม่
+        if gap >= SEND_MS or (send_now and gap >= MIN_GAP_MS):   # ตามรอบ หรือมีเหตุการณ์ใหม่
             t_send, n, send_now = now, n + 1, False
-            if not send_report(n, rh, tank, pump_ms, bursts, rh_min):
+            wait = max(0, auto_total - time.ticks_diff(now, t_auto)) // 1000 if auto_on else 0
+            extra = {"temp_c": round(temp, 1), "vpd": round(vpd, 2), "stress": stress,
+                     "auto": 1 if auto_on else 0, "auto_wait": wait, "auto_sec": AUTO_SEC,
+                     "src": "VR3" if manual else "VR1", "dry": RH_DRY, "wet": RH_WET}
+            if not send_report(n, rh, tank, pump_ms, bursts, rh_min, extra):
                 stop(w, pump, "สายหลุด")
         if not mqtt.is_connected():
             stop(w, pump, "สายหลุด")
         ui.poll()
-        wait_ms(POLL_MS, (stop_btn, auto_btn))
+        wait_ms(POLL_MS, BTNS)
     stop(w, pump, "เลิกฟัง พ่นไป %d รอบ" % bursts, COL_DIM)
 
 
@@ -537,8 +655,3 @@ finally:
         mqtt.disconnect()
     except Exception:
         pass
-
-# ---- ตาคุณ ----
-# 1) ส่ง {"cmd":"pump","on":1,"sec":9999} พ่นกี่วิ ทำไมหมอกต้องมีเพดาน (ใบเปียกนานเกิดเชื้อรา)
-# 2) ระดับ 2: ความชื้นต่ำกว่า RH_DRY = พ่นเองสั้น ๆ 5 วิ แล้วรอ 2 นาทีก่อนพ่นซ้ำ
-# 3) ลองเอง: เสียงเตือนใน TUNES ("alert_dry", "alert_wet") ปรับให้เป็นเสียงของกลุ่มคุณ
