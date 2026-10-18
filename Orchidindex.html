@@ -73,6 +73,8 @@ footer{max-width:980px;margin:auto;padding:12px 14px 24px;color:var(--dim);font-
       <div><b id="t_min">--</b><span>ต่ำสุดรอบนี้</span></div>
       <div><b id="t_tank">--</b><span>ถังหมอก</span></div>
       <div><b id="t_pump">--</b><span>หัวพ่น</span></div>
+      <div><b id="t_temp">--</b><span>อุณหภูมิ</span></div>
+      <div><b id="t_stress">--</b><span>ความเครียดพืช</span></div>
     </div>
   </section>
   <section class="card">
@@ -118,6 +120,7 @@ const rows = [], hist = [];
 let client = null, lastAt = 0, dryStreak = 0, lastCount = null, metric = "rh", autoOn = null, lastRh = null;
 let team = new URLSearchParams(location.search).get("team") || "";
 $("team").value = team;
+const STRESS = [["สบาย", "#9dff00"], ["เริ่มเครียด", "#ffb300"], ["เครียดหนัก", "#ff3b5c"]];   // ระดับจากบอร์ด 0/1/2
 const SRC = { SHT40: "แหล่งข้อมูล: SHT40 เซนเซอร์จริง", VR1: "แหล่งข้อมูล: VR1 ลูกบิดจำลอง", VR3: "แหล่งข้อมูล: VR3 โหมดมือฉุกเฉิน (พ่นอัตโนมัติหยุดพัก)" };
 
 function setStatus(t, ok) { const s = $("status"); s.textContent = t; s.className = ok ? "ok" : "bad"; }
@@ -249,6 +252,9 @@ function onTelemetry(d) {
   $("t_tank").textContent = tank === null ? "--" : tank + " %";
   $("t_tank").style.color = tank !== null && tank < 10 ? "var(--rd)" : "";
   $("t_pump").textContent = pump === null ? "--" : pump ? "พ่นอยู่" : "หยุด";
+  $("t_temp").textContent = temp === null ? "--" : temp + " °C";
+  const st = stress === null ? null : STRESS[stress];
+  $("t_stress").textContent = st ? st[0] : "--"; $("t_stress").style.color = st ? st[1] : "";
   showAuto(auto, wait, src);
   // สถิติรายวัน
   if (dkey() !== dayId) { saveDay(); loadDay(); }
