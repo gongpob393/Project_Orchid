@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>โรงกล้วยไม้ ไงฮาฟ XD</title>
+<!--
+  เรื่อง 16 · ธีม cyber · คู่กับ idea_16_orchid_mist.py   เปิดแบบนี้: idea_16_cyber.html?team=team05
+  คีย์ที่ใช้: soil tank pump n bursts rh_min + temp_c rh vpd stress auto auto_wait src dry wet (คีย์อื่นไม่สนใจ)
+  เกณฑ์ dry/wet บอร์ดส่งมาเอง หน้านี้ใช้ตามบอร์ด ไม่ต้องแก้สองที่ · ค่าเกณฑ์ทั้งหมดเป็นค่าสาธิต ไม่ใช่คำแนะนำทางเกษตร
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#05060f;--ln:#13406b;--cy:#00f0ff;--mg:#ff2bd6;--lm:#9dff00;--am:#ffb300;--rd:#ff3b5c;--ink:#d8f6ff;--dim:#6f8fa8}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--ink);font:15px/1.5 "IBM Plex Sans Thai",system-ui,sans-serif;
+background:radial-gradient(circle at 15% 0,#12113a,transparent 55%),radial-gradient(circle at 90% 20%,#2a0d3a,transparent 50%),
+linear-gradient(rgba(0,240,255,.05) 1px,transparent 1px) 0 0/34px 34px,linear-gradient(90deg,rgba(0,240,255,.05) 1px,transparent 1px) 0 0/34px 34px,var(--bg)}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.18) 2px 3px)}
+header{text-align:center;padding:20px 14px 6px}
+h1{margin:0;font:700 2rem Orbitron,"IBM Plex Sans Thai",sans-serif;letter-spacing:.12em;background:linear-gradient(90deg,var(--cy),var(--mg));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 8px rgba(0,240,255,.5))}
+h1 span{animation:bl 1s steps(2) infinite}@keyframes bl{50%{opacity:0}}
+header p{margin:2px 0 8px;color:var(--dim);font:.75rem Orbitron,monospace;letter-spacing:.1em}
+.teamrow{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;max-width:980px;margin:auto;padding:10px 14px}
+.card{position:relative;min-width:0;padding:14px;background:rgba(10,18,36,.85);border:1px solid var(--ln);box-shadow:inset 0 0 24px rgba(0,240,255,.07);
+clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px))}
+.wide{grid-column:1/-1}
+h2{margin:0 0 8px;font:500 .8rem Orbitron,monospace;letter-spacing:.14em;color:var(--cy);text-transform:uppercase}
+h2::before{content:"// ";color:var(--mg)}
+#gauge{width:100%;max-width:380px;display:block;margin:auto;height:auto;filter:drop-shadow(0 0 6px rgba(0,240,255,.45))}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.stats div{background:#07101e;border:1px solid var(--ln);padding:8px 4px}
+.stats b{display:block;font:700 1.05rem Orbitron,monospace;color:var(--cy);text-shadow:0 0 8px rgba(0,240,255,.5)}
+.stats span{font-size:.75rem;color:var(--dim)}
+.dim{color:var(--dim);font-size:.82rem;margin:4px 0}
+.btn{font:600 .85rem "IBM Plex Sans Thai",sans-serif;color:var(--cy);background:transparent;border:1px solid var(--cy);padding:7px 14px;cursor:pointer;
+clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);transition:.15s}
+.btn:hover,.btn.on{background:var(--cy);color:#001018;box-shadow:0 0 14px var(--cy)}
+.btn.mg{color:var(--mg);border-color:var(--mg)}.btn.mg:hover{background:var(--mg);color:#10001a;box-shadow:0 0 14px var(--mg)}
+.btn.rd{color:var(--rd);border-color:var(--rd)}.btn.rd:hover{background:var(--rd);color:#fff;box-shadow:0 0 14px var(--rd)}
+.btn.lm{color:var(--lm);border-color:var(--lm)}.btn.lm:hover,.btn.lm.on{background:var(--lm);color:#071000;box-shadow:0 0 14px var(--lm)}
+input{min-width:0;max-width:100%;font:inherit;color:var(--ink);background:#050b16;border:1px solid var(--ln);padding:6px 10px;outline:0}
+input:focus{border-color:var(--cy);box-shadow:0 0 8px var(--cy)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+#status{font-size:.82rem}#status.ok{color:var(--lm)}#status.bad{color:var(--rd)}
+#advice{display:none;grid-column:1/-1;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--am);background:rgba(255,179,0,.1);color:#ffd27a;animation:pl 1.4s infinite}
+#advice.show{display:flex}#advice b{flex:1 1 220px}@keyframes pl{50%{box-shadow:0 0 16px rgba(255,179,0,.5)}}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}.tabs .btn{padding:3px 10px;font-size:.78rem}
+#chart{width:100%;height:auto;display:block}
+footer{max-width:980px;margin:auto;padding:12px 14px 24px;color:var(--dim);font-size:.8rem}
+@media(max-width:480px){h1{font-size:1.35rem}.btn{padding:10px 14px}main{padding:8px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>โรงกล้วยไม้ ไงฮาฟ XD<span>_</span></h1>
+  <p>ORCHID MIST // พ่นหมอกจากมือถือ</p>
+  <div class="teamrow">
+    <label class="dim">ทีม <input id="team" size="10" autocomplete="off"></label>
+    <button id="go" class="btn">เชื่อมต่อ</button>
+    <span id="status" class="bad">ยังไม่ต่อ</span>
+  </div>
+</header>
+<main>
+  <div id="advice"><b id="advice_t"></b><button id="quick" class="btn mg">พ่น 10 วินาที</button></div>
+  <section class="card">
+    <h2>ความชื้นอากาศ</h2>
+    <svg id="gauge" viewBox="0 0 300 165" role="img" aria-label="มาตรความชื้นอากาศ"></svg>
+    <p class="dim" id="t_src" style="text-align:center">--</p>
+    <div class="stats">
+      <div><b id="t_min">--</b><span>ต่ำสุดรอบนี้</span></div>
+      <div><b id="t_tank">--</b><span>ถังหมอก</span></div>
+      <div><b id="t_pump">--</b><span>หัวพ่น</span></div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>สั่งงาน</h2>
+    <div class="row"><button id="snd" class="btn lm">เสียงแจ้งเตือน: --</button><button id="sndt" class="btn">ทดสอบเสียง</button></div>
+    <p class="dim" id="t_snd">--</p>
+    <div class="row">
+      <label class="dim">นาน <input id="sec" type="number" min="1" max="30" value="10" style="width:5em"> วินาที</label>
+      <button id="on" class="btn mg">พ่นหมอก</button><button id="off" class="btn rd">หยุดพ่น</button>
+    </div>
+    <p class="dim">บอร์ดตัดเหลือไม่เกิน 30 วินาที และไม่พ่นถ้าถังหมอกต่ำกว่า 10 %</p>
+    <div class="row"><button id="auto" class="btn lm">พ่นอัตโนมัติ: --</button></div>
+    <p class="dim" id="t_auto">รอรายงานจากบอร์ด</p>
+    <div class="row"><button id="beep" class="btn">เรียกคนดูแล (beep)</button></div>
+    <div class="row"><input id="say" maxlength="20" placeholder="MIST OK" style="flex:1"><button id="sayb" class="btn">ขึ้นจอไฟ</button></div>
+    <div class="row"><button id="csv" class="btn">ดาวน์โหลด CSV</button><span id="csvn" class="dim">0 แถว</span></div>
+    <p class="dim">รายงานล่าสุด <span id="t_age">--</span></p>
+  </section>
+  <section class="card wide">
+    <h2>กราฟประวัติความชื้น <span id="c_now" class="dim"></span></h2>
+    <svg id="chart" viewBox="0 0 400 150" role="img" aria-label="กราฟประวัติ"></svg>
+    <p class="dim" id="c_span">รอข้อมูล</p>
+  </section>
+  <section class="card wide">
+    <h2>สรุปสถิติรายวัน <span id="d_date" class="dim"></span></h2>
+    <div class="stats" id="daily" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))"></div>
+    <p class="dim">นับเฉพาะช่วงที่เปิดหน้านี้และรับรายงานอยู่ · เก็บในเบราว์เซอร์เครื่องนี้ แยกตามทีมและวัน</p>
+  </section>
+</main>
+<footer>
+  <p>เกณฑ์ความชื้นเป็นค่าสาธิตในห้องเรียน ไม่ใช่คำแนะนำทางเกษตร</p>
+  <p>หน้านี้เป็นจุดเริ่มต้นเท่านั้น ห้ามส่งตามนี้ ทีมต้องต่อยอดเองอย่างน้อย 3 อย่าง (ดู PROJECT_BRIEF_lite_th.md)</p>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"
+        integrity="sha384-9WWboT9UtuPFRlOLq4FygQkcJxzYcpz8SXGkNyCEXM+44n14xzjNlrRKYZwuF/A6" crossorigin="anonymous"></script>
+<script>
+"use strict";
+const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt", ROOT = "bento-aiot";
+let RH_DRY = 60, RH_WET = 75;                 // บอร์ดส่ง dry/wet มาทับให้เอง
+const DRY_RUN = 3, HIST = 900, NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+const rows = [], hist = [];
+let client = null, lastAt = 0, dryStreak = 0, lastCount = null, metric = "rh", autoOn = null, lastRh = null;
+let team = new URLSearchParams(location.search).get("team") || "";
+$("team").value = team;
+const SRC = { SHT40: "แหล่งข้อมูล: SHT40 เซนเซอร์จริง", VR1: "แหล่งข้อมูล: VR1 ลูกบิดจำลอง", VR3: "แหล่งข้อมูล: VR3 โหมดมือฉุกเฉิน (พ่นอัตโนมัติหยุดพัก)" };
+
+function setStatus(t, ok) { const s = $("status"); s.textContent = t; s.className = ok ? "ok" : "bad"; }
+function num(v, lo, hi, d = 0) { if (typeof v !== "number" || !isFinite(v) || v < lo || v > hi) return null; const k = 10 ** d; return Math.round(v * k) / k; }
+function el(tag, a) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); return e; }
+function txt(x, y, s, fill, size, anchor) { const t = el("text", { x, y, fill, "font-size": size, "text-anchor": anchor || "middle", "font-family": "Orbitron,monospace" }); t.textContent = s; return t; }
+function fmt(s) { s = Math.round(s); return s >= 3600 ? Math.floor(s / 3600) + " ชม. " + Math.floor(s % 3600 / 60) + " น." : Math.floor(s / 60) + " น. " + (s % 60) + " วิ"; }
+
+// ---- มาตรครึ่งวงกลม ----
+const CX = 150, CY = 150, RAD = 120;
+function polar(p, r) { const a = Math.PI * (1 - p / 100); return [CX + r * Math.cos(a), CY - r * Math.sin(a)]; }
+function band(p0, p1, color) {
+  const [x0, y0] = polar(p0, RAD), [x1, y1] = polar(p1, RAD);
+  return el("path", { d: `M${x0} ${y0} A${RAD} ${RAD} 0 0 1 ${x1} ${y1}`, stroke: color, "stroke-width": 20, fill: "none" });
+}
+function drawGauge(rh) {
+  const g = $("gauge"); g.replaceChildren();
+  g.append(band(0, RH_DRY, "#ffb300"), band(RH_DRY, RH_WET, "#00f0ff"), band(RH_WET, 100, "#ff2bd6"));
+  for (const [p, w] of [[RH_DRY / 2, "แห้ง"], [(RH_DRY + RH_WET) / 2, "พอดี"], [(RH_WET + 100) / 2, "ชื้น"]]) {
+    const [x, y] = polar(p, RAD - 28); g.append(txt(x, y, w, "#6f8fa8", 11));
+  }
+  g.append(txt(CX, CY - 8, rh === null ? "--" : rh + " %", "#d8f6ff", 38));
+  if (rh !== null) {
+    const [x0, y0] = polar(rh, RAD - 20), [x1, y1] = polar(rh, RAD + 16);
+    g.append(el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: "#9dff00", "stroke-width": 5, "stroke-linecap": "round" }));
+  }
+}
+
+// ---- กราฟประวัติ ----
+function drawChart() {
+  const g = $("chart"); g.replaceChildren();
+  const W = 400, H = 150, P = 28, vals = hist.map((h) => h[metric]).filter((v) => v !== null);
+  let lo = 0, hi = 100;
+  const X = (i) => P + (W - P - 6) * (hist.length < 2 ? 0 : i / (hist.length - 1));
+  const Y = (v) => H - 18 - (H - 28) * (v - lo) / (hi - lo || 1);
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + (hi - lo) * k / 4, y = Y(v);
+    g.append(el("line", { x1: P, y1: y, x2: W - 6, y2: y, stroke: "#13406b", "stroke-width": .6 }), txt(P - 4, y + 3, Math.round(v * 10) / 10, "#6f8fa8", 8, "end"));
+  }
+  if (metric === "rh") for (const [v, c] of [[RH_DRY, "#ffb300"], [RH_WET, "#ff2bd6"]])
+    g.append(el("line", { x1: P, y1: Y(v), x2: W - 6, y2: Y(v), stroke: c, "stroke-width": .9, "stroke-dasharray": "4 3" }));
+  let d = "", pen = false;
+  hist.forEach((h, i) => { const v = h[metric]; if (v === null) { pen = false; return; } d += (pen ? "L" : "M") + X(i) + " " + Y(v); pen = true; });
+  if (d) g.append(el("path", { d, fill: "none", stroke: "#00f0ff", "stroke-width": 1.6, "stroke-linejoin": "round", style: "filter:drop-shadow(0 0 3px #00f0ff)" }));
+  const last = vals.length ? vals[vals.length - 1] : null;
+  $("c_now").textContent = last === null ? "" : "ล่าสุด " + last;
+  $("c_span").textContent = hist.length > 1 ? "ย้อนหลัง " + Math.max(1, Math.round((hist[hist.length - 1].t - hist[0].t) / 60000)) + " นาที (" + hist.length + " จุด) เส้นประ = เกณฑ์แห้ง/ชื้นเกิน" : "รอข้อมูล";
+}
+
+// ---- สถิติรายวัน (เก็บใน localStorage ต่อทีมต่อวัน) ----
+const blank = () => ({ watch: 0, dry: 0, ok: 0, wet: 0, pump: 0, bursts: 0, rhMin: null, rhMax: null, tMax: null, vpdMax: null, hard: 0 });
+let day = blank(), dayId = "";
+const dkey = () => new Date().toLocaleDateString("sv-SE");
+function loadDay() {
+  dayId = dkey(); day = blank();
+  try { const s = localStorage.getItem("orchid16:" + team + ":" + dayId); if (s) Object.assign(day, JSON.parse(s)); } catch (e) { /* ใช้ค่าว่าง */ }
+}
+function saveDay() { try { localStorage.setItem("orchid16:" + team + ":" + dayId, JSON.stringify(day)); } catch (e) { /* ข้าม */ } }
+function renderDay() {
+  const tot = day.dry + day.ok + day.wet, mm = (a, b) => a === null ? "--" : a + "–" + b;
+  const cells = [["เวลาที่เฝ้าดู", fmt(day.watch)], ["อยู่ในช่วงพอดี", tot ? Math.round(100 * day.ok / tot) + " %" : "--"],
+    ["เวลาที่แห้ง", fmt(day.dry)], ["เวลาที่ชื้นเกิน", fmt(day.wet)], ["พ่นหมอก", day.bursts + " ครั้ง"], ["เวลาพ่นรวม", fmt(day.pump)],
+    ["ความชื้น ต่ำ–สูง", mm(day.rhMin, day.rhMax) + (day.rhMin === null ? "" : " %")]];
+  $("daily").innerHTML = cells.map(([l, v]) => `<div><b>${v}</b><span>${l}</span></div>`).join("");
+  $("d_date").textContent = dayId;
+}
+
+// ---- เสียงแจ้งเตือนบนเว็บ (Web Audio) ----
+let soundOn = false, actx = null, bandNow = 1, alarmUntil = 0, alarmI = 0, lastAlarmAt = 0, alarmTimer = null;
+try { soundOn = localStorage.getItem("orchid16:sound") === "1"; } catch (e) { /* ใช้ค่าปิด */ }
+const NOTES = { 0: [523, 415, 523], 2: [415, 622, 415] };   // Hz: แห้ง / ชื้นเกิน
+function audio() {
+  if (!actx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; actx = new C(); }
+  if (actx.state === "suspended") actx.resume();
+  return actx;
+}
+function tone(f, ms) {
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+  o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(a.destination);
+  g.gain.setValueAtTime(.2, t); g.gain.exponentialRampToValueAtTime(.001, t + ms / 1000);
+  o.start(t); o.stop(t + ms / 1000 + .02);
+}
+function alarmStep() {
+  if (!soundOn || bandNow === 1 || Date.now() >= alarmUntil) { clearInterval(alarmTimer); alarmTimer = null; return; }
+  const n = NOTES[bandNow]; tone(n[alarmI++ % n.length], 240);
+}
+function startAlarm() {
+  if (!soundOn || bandNow === 1) return;
+  alarmUntil = Date.now() + 5000; alarmI = 0; lastAlarmAt = Date.now();
+  if (!alarmTimer) { alarmStep(); alarmTimer = setInterval(alarmStep, 300); }
+}
+function webBand(rh, prev) {      // เหมือนบอร์ด: มี hysteresis 2 % กันเสียงรัว
+  if (prev === 0 && rh < RH_DRY + 2) return 0;
+  if (prev === 2 && rh > RH_WET - 2) return 2;
+  return rh < RH_DRY ? 0 : rh > RH_WET ? 2 : 1;
+}
+function updateSnd() {
+  const b = $("snd"); b.textContent = "เสียงแจ้งเตือน: " + (soundOn ? "เปิด" : "ปิด"); b.classList.toggle("on", soundOn);
+  $("t_snd").textContent = !soundOn ? "ปิดอยู่ · เมื่อเปิด จะมีเสียงเตือน 5 วินาทีตอนความชื้นแห้งหรือชื้นเกิน (ซ้ำทุก 20 วินาทีถ้ายังผิดช่วง)"
+    : actx && actx.state === "running" ? "เปิดอยู่ · มีเสียงเฉพาะตอนเปิดหน้านี้ค้างไว้ (แท็บที่ถูกพับหรือจอดับอาจไม่ดัง)"
+    : "เปิดอยู่ · แตะหน้านี้หนึ่งครั้งเพื่อให้เบราว์เซอร์อนุญาตเล่นเสียง";
+}
+
+// ---- รับรายงานจากบอร์ด ----
+function showAuto(a, wait, src) {
+  if (a === 0 || a === 1) autoOn = a === 1;
+  const b = $("auto"); b.textContent = "พ่นอัตโนมัติ: " + (autoOn === null ? "--" : autoOn ? "เปิด" : "ปิด"); b.classList.toggle("on", !!autoOn);
+  $("t_auto").textContent = autoOn === null ? "รอรายงานจากบอร์ด" : !autoOn ? "ปิดอยู่ · บอร์ดเริ่มรันในโหมดปิดเสมอ"
+    : src === "VR3" ? "เปิดอยู่ แต่หยุดพักเพราะอยู่โหมดมือ (VR3)"
+    : wait > 0 ? "เปิดอยู่ · รอ " + wait + " วิ ก่อนพ่นรอบถัดไป" : "เปิดอยู่ · พร้อมพ่น 5 วิ เมื่อความชื้นต่ำกว่า " + RH_DRY + " %";
+}
+function onTelemetry(d) {
+  const rh = num(d.soil, 0, 100), tank = num(d.tank, 0, 100), pump = num(d.pump, 0, 1), count = num(d.bursts, 0, 1e6);
+  const rhMin = num(d.rh_min, 0, 100), n = num(d.n, 0, 1e9), temp = num(d.temp_c, -40, 85, 1), vpd = num(d.vpd, 0, 20, 2);
+  const stress = num(d.stress, 0, 2), auto = num(d.auto, 0, 1), wait = num(d.auto_wait, 0, 1e6), rhS = num(d.rh, 0, 100, 1);
+  const dry = num(d.dry, 0, 100), wet = num(d.wet, 0, 100), src = typeof d.src === "string" ? d.src : "";
+  if (dry !== null && wet !== null && dry < wet) { RH_DRY = dry; RH_WET = wet; }
+  const now = Date.now(), dt = lastAt ? Math.min((now - lastAt) / 1000, 10) : 0; lastAt = now;
+  if (client && client.connected) setStatus("ต่อแล้ว " + ROOT + "/" + team + " · รับรายงานจากบอร์ดอยู่", true);
+  lastRh = rh; drawGauge(rh);
+  if (rh !== null) {
+    const nb = webBand(rh, bandNow);
+    if (nb !== bandNow) { bandNow = nb; if (nb !== 1) startAlarm(); else alarmUntil = 0; }
+    else if (nb !== 1 && Date.now() - lastAlarmAt >= 20000) startAlarm();
+  }
+  $("t_src").textContent = SRC[src] || "แหล่งข้อมูล: --";
+  $("t_min").textContent = rhMin === null ? "--" : rhMin + " %";
+  $("t_tank").textContent = tank === null ? "--" : tank + " %";
+  $("t_tank").style.color = tank !== null && tank < 10 ? "var(--rd)" : "";
+  $("t_pump").textContent = pump === null ? "--" : pump ? "พ่นอยู่" : "หยุด";
+  showAuto(auto, wait, src);
+  // สถิติรายวัน
+  if (dkey() !== dayId) { saveDay(); loadDay(); }
+  day.watch += dt;
+  if (rh !== null) {
+    day[rh < RH_DRY ? "dry" : rh > RH_WET ? "wet" : "ok"] += dt;
+    day.rhMin = day.rhMin === null ? rh : Math.min(day.rhMin, rh); day.rhMax = day.rhMax === null ? rh : Math.max(day.rhMax, rh);
+  }
+  if (pump === 1) day.pump += dt;
+  if (count !== null && lastCount !== null && count > lastCount) day.bursts += count - lastCount;
+  if (count !== null) lastCount = count;
+  saveDay(); renderDay();
+  // ประวัติ + กราฟ
+  hist.push({ t: now, rh }); if (hist.length > HIST) hist.shift(); drawChart();
+  // แนะนำพ่น: แห้งติดกัน DRY_RUN รายงาน ไม่ได้พ่นอยู่ และไม่ได้เปิดพ่นอัตโนมัติ
+  dryStreak = rh !== null && rh < RH_DRY ? dryStreak + 1 : 0;
+  const advise = dryStreak >= DRY_RUN && pump === 0 && auto !== 1;
+  $("advice").classList.toggle("show", advise);
+  if (advise) $("advice_t").textContent = "อากาศแห้ง " + dryStreak + " รายงานติด (" + rh + " %) ควรพ่นหมอก";
+  rows.push([new Date().toISOString(), n, rh, tank, pump, count, rhMin, temp, rhS, vpd, stress, auto, src]);
+  $("csvn").textContent = rows.length + " แถว";
+}
+
+setInterval(() => {
+  const age = lastAt ? Math.round((Date.now() - lastAt) / 1000) : null;
+  $("t_age").textContent = age === null ? "--" : age + " วินาทีที่แล้ว"; updateSnd();
+  if (client && client.connected && (age === null || age > 10))
+    setStatus(age === null ? "ต่อ broker แล้ว แต่ยังไม่ได้รับรายงานจากบอร์ด (บอร์ดรันอยู่ไหม? TEAM ตรงกันไหม?)" : "ไม่ได้รับรายงานจากบอร์ด " + age + " วินาทีแล้ว (บอร์ดอาจหลุด)", false);
+}, 1000);
+
+// ---- ส่งคำสั่ง ----
+function send(obj) {
+  if (!client || !client.connected) { setStatus("ยังไม่ต่อ broker", false); return; }
+  client.publish(ROOT + "/" + team + "/cmd", JSON.stringify(obj));
+  setStatus("ส่ง " + JSON.stringify(obj), true);
+}
+function csvCell(v) {
+  if (v === undefined || v === null) return "";
+  let t = String(v); if (/^[=+\-@]/.test(t)) t = "'" + t;
+  return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+function downloadCsv() {
+  const head = ["time", "n", "rh_used", "tank", "pump", "bursts", "rh_min", "temp_c", "rh_sensor", "vpd", "stress", "auto", "src"];
+  const text = [head.join(","), ...rows.map((r) => r.map(csvCell).join(","))].join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF" + text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = "orchid_mist_" + team + ".csv";
+  document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function connect() {
+  team = $("team").value.trim();
+  if (!/^team[0-9a-z_]{2,20}$/.test(team) || team === "team00") { setStatus("ใส่เลขทีม เช่น team05", false); return; }
+  if (client) client.end(true);
+  lastCount = null; lastAt = 0; autoOn = null; loadDay(); renderDay();
+  client = mqtt.connect(BROKER_URL, { clientId: "idea16-web-" + Math.random().toString(16).slice(2, 10), connectTimeout: 20000 });
+  setStatus("กำลังต่อ...", false);
+  client.on("connect", () => { setStatus("ต่อแล้ว " + ROOT + "/" + team, true); client.subscribe(ROOT + "/" + team + "/#"); });
+  client.on("close", () => setStatus("หลุด กำลังต่อใหม่...", false));
+  client.on("message", (topic, payload) => {
+    let d = null; try { d = JSON.parse(payload.toString()); } catch (e) { d = null; }
+    if (topic.endsWith("/telemetry") && d && typeof d === "object" && !Array.isArray(d)) onTelemetry(d);
+  });
+}
+const mist = (sec) => send({ cmd: "pump", on: 1, sec });
+$("go").onclick = connect;
+$("on").onclick = () => { const s = Number($("sec").value); mist(Number.isInteger(s) && s > 0 ? Math.min(s, 30) : 10); };
+$("quick").onclick = () => mist(10);
+$("off").onclick = () => send({ cmd: "pump", on: 0 });
+$("auto").onclick = () => { if (autoOn === null) { setStatus("ยังไม่ได้รับรายงานจากบอร์ด", false); return; } send({ cmd: "auto", on: autoOn ? 0 : 1 }); };
+$("beep").onclick = () => send({ cmd: "beep" });
+$("sayb").onclick = () => send({ cmd: "say", text: $("say").value.replace(/[^ -~]/g, "").slice(0, 20).toUpperCase() });
+$("csv").onclick = downloadCsv;
+$("snd").onclick = () => {
+  soundOn = !soundOn;
+  try { localStorage.setItem("orchid16:sound", soundOn ? "1" : "0"); } catch (e) { /* ข้าม */ }
+  if (soundOn) { audio(); tone(660, 150); } else { alarmUntil = 0; }
+  updateSnd();
+};
+$("sndt").onclick = () => { audio(); NOTES[0].concat(NOTES[2]).forEach((f, i) => setTimeout(() => tone(f, 240), i * 300)); updateSnd(); };
+document.addEventListener("pointerdown", () => { if (soundOn) { audio(); updateSnd(); } }, { once: true });   // ปลดล็อกเสียงหลังโหลดหน้าใหม่
+drawGauge(null); drawChart(); renderDay(); updateSnd();
+if (team) connect(); else setStatus("ใส่เลขทีมแล้วกดเชื่อมต่อ", false);
+</script>
+</body>
+</html>
