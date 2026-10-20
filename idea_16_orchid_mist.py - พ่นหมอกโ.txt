@@ -7,7 +7,7 @@
 #   1) หน้าจอใหม่: แถบหัว การ์ดแยกส่วน ป้ายช่วงความชื้น ป้ายโหมด ป้ายสถานะปุ่ม
 #   2) เสียงเตือนเมื่อความชื้นอยู่นอกช่วง "พอดี" (แห้ง/ชื้นเกิน เสียงต่างกัน) ดัง ALERT_SOUND_MS
 #   3) VR3 = ปุ่มหมุนฉุกเฉิน: หมุนแล้วใช้ค่า VR3 เป็น % ความชื้นแทน VR1 (โหมดมือ) กด SW6 เพื่อกลับ
-#   4) อุณหภูมิจำลองด้วย VR2 + VPD + ระดับความเครียดของพืช
+#   4) อุณหภูมิจริงจากเซนเซอร์ SHT40 (อ่านไม่ได้ = ถอยไปใช้ VR2 จำลอง และบอกบนจอ/เว็บ) + VPD + ระดับความเครียดของพืช
 #   5) พ่นอัตโนมัติเมื่อแห้ง (เปิด/ปิดได้จากเว็บ): พ่น AUTO_SEC วิ แล้วพัก AUTO_WAIT_MS
 #   6) ส่งขึ้นเว็บครบ: soil tank pump n bursts rh_min + temp_c vpd stress auto auto_wait auto_sec src dry wet
 #   7) ปุ่ม SW5/SW6 สุ่มอ่านถี่ขึ้น กดแล้วตอบทุกครั้ง และมีป้าย SW5/SW6 บนหัวจอ (กดค้างต้องขึ้น ON)
@@ -24,6 +24,10 @@ import math
 import mqtt
 import pots
 import rgbmatrix
+try:
+    import sensors
+except ImportError:                    # ไม่มีโมดูลเซนเซอร์ (เช่น emulator บางรุ่น) ให้รันต่อด้วย VR2 จำลอง
+    sensors = None
 import time
 import ui
 import wifi
@@ -54,7 +58,10 @@ ALERT_VOLUME = 40                      # ดังกว่าเสียงท
 ALERT_NOTE_MS = 300                    # ช่วงห่างระหว่างโน้ตแต่ละตัวของเสียงเตือน
 SW_STOP_INDEX = 1                      # SW5 (ปุ่มล่าง) = หยุดพ่นฉุกเฉิน · ถ้ากดแล้วไม่ตอบ ลองสลับเลข 0/1 ของสองบรรทัดนี้
 SW_AUTO_INDEX = 0                      # SW6 (ปุ่มบน) = กลับโหมดอัตโนมัติ
-TEMP_OFFSET = -7.0                     # ใช้ปรับค่าถ้าต่อเซนเซอร์อุณหภูมิจริง (ตอนนี้จำลองด้วย VR2 ยังไม่ได้ใช้)
+USE_REAL_TEMP = True                   # True = วัดอุณหภูมิจริงจาก SHT40 (อ่านไม่ได้ก็ใช้ VR2 จำลองแทน) · False = จำลองด้วย VR2 เสมอ
+TEMP_OFFSET = 0.0                      # ชดเชยความอุ่นจากชิปบนบอร์ด (ค่าลบ = ลดลง) วัดเทียบเทอร์โมมิเตอร์จริงแล้วค่อยปรับ เช่น -3.0
+TEMP_VALID_MIN, TEMP_VALID_MAX = -10, 60   # นอกช่วงนี้ถือว่าอ่านเพี้ยน
+TEMP_READ_MS = 1000                    # อ่านอุณหภูมิทุกกี่ ms (ไม่ต้องถี่ทุกรอบ ลูปจะได้ไม่ช้า)
 VPD_LOW, VPD_HIGH, VPD_MARGIN = 0.5, 1.2, 0.3
 AUTO_DEFAULT = True                    # พ่นอัตโนมัติเมื่อแห้ง (ตั้งเป็น False ถ้าอยากให้คนเปิดเอง) เปิด/ปิดจากเว็บได้
 AUTO_SEC, AUTO_WAIT_MS = 10, 5000      # พ่นกี่วิ / พักกี่ ms ก่อนพ่นซ้ำ (โจทย์แนะนำพัก 2 นาที = 120000)
@@ -234,9 +241,25 @@ def band_id(rh, prev):
     return 1
 
 
+_temp_err = ""                         # เหตุผลที่อ่าน SHT40 ไม่ได้ (ว่าง = อ่านได้) แสดงบนจอและส่งขึ้นเว็บ
+
+
 def read_temp():
-    # จำลองอุณหภูมิด้วย VR2 ถ้ามีเซนเซอร์จริงให้แก้ตรงนี้ที่เดียว (แล้วบวก TEMP_OFFSET ถ้าต้องปรับค่า)
-    return TEMP_MIN_C + knob_percent(TEMP_POT) * (TEMP_MAX_C - TEMP_MIN_C) / 100
+    # คืน (อุณหภูมิ °C, แหล่ง) แหล่ง = "SHT40" (จริง) หรือ "VR2" (จำลอง)
+    global _temp_err
+    if USE_REAL_TEMP:
+        if sensors is None:
+            _temp_err = "no sensors module"
+        else:
+            try:
+                t = sensors.sht40.temperature() + TEMP_OFFSET
+                if t == t and TEMP_VALID_MIN <= t <= TEMP_VALID_MAX:     # t == t กัน NaN
+                    _temp_err = ""
+                    return t, "SHT40"
+                _temp_err = "out of range"
+            except Exception as e:
+                _temp_err = str(e)[:20] or "read fail"
+    return TEMP_MIN_C + knob_percent(TEMP_POT) * (TEMP_MAX_C - TEMP_MIN_C) / 100, "VR2"
 
 
 def calc_vpd(t, rh):
@@ -443,11 +466,11 @@ def show_air(w, rh, band, tank, rh_min, rh_max, manual):
     w["tank"].text("%d %%" % tank)
 
 
-def show_env(w, temp, vpd, stress, auto_on):
-    if not changed("env", (round(temp, 1), round(vpd, 2), stress, auto_on)):
+def show_env(w, temp, temp_src, vpd, stress, auto_on):
+    if not changed("env", (round(temp, 1), temp_src, round(vpd, 2), stress, auto_on)):
         return
     word, col = STRESS[stress]
-    w["temp"].text("อุณหภูมิ %.1f C" % temp)
+    w["temp"].text("อุณหภูมิ %.1f C" % temp + ("" if temp_src == "SHT40" else " (จำลอง)"))
     w["vpd"].text("VPD %.2f kPa" % vpd)
     w["stress"].color(col)
     w["stress"].text("ความเครียด: " + word)
@@ -514,6 +537,9 @@ def main():
     auto_on = AUTO_DEFAULT             # พ่นอัตโนมัติเมื่อแห้ง
     auto_total = AUTO_SEC * 1000 + AUTO_WAIT_MS
     t_auto = time.ticks_add(time.ticks_ms(), -auto_total)   # รอบแรกพ่นได้ทันที
+    temp, temp_src = read_temp()       # อุณหภูมิล่าสุด (อ่านใหม่ทุก TEMP_READ_MS)
+    t_temp = time.ticks_ms()
+    temp_warned = False
     t_alert = t_note = time.ticks_ms()
     alarm_until, alarm_i = None, 0     # None = ไม่มีเสียงเตือนดังอยู่
     send_now, last_pump = True, 0      # send_now = มีเหตุการณ์ใหม่ ส่งรายงานทันที (รอบแรกส่งเลย เว็บจะขึ้นเร็ว)
@@ -554,7 +580,14 @@ def main():
         rh = vr3 if manual else knob_percent(POT_AUTO)
         tank = knob_percent(3)
         rh_min, rh_max = min(rh_min, rh), max(rh_max, rh)
-        temp = read_temp()
+        if time.ticks_diff(now, t_temp) >= TEMP_READ_MS:
+            t_temp = now
+            temp, temp_src = read_temp()
+        if USE_REAL_TEMP and temp_src != "SHT40" and not temp_warned:     # บอกครั้งเดียวว่ากำลังใช้ค่าจำลอง
+            temp_warned = True
+            show_note(w, "อ่าน SHT40 ไม่ได้ (%s) ใช้ VR2 จำลองอุณหภูมิ" % (_temp_err or "?"), COL_DRY)
+        elif temp_src == "SHT40":
+            temp_warned = False
         vpd = calc_vpd(temp, rh)
         stress = stress_id(vpd)
 
@@ -628,7 +661,7 @@ def main():
         tick()
         show_air(w, rh, band, tank, rh_min, rh_max, manual)
         tick()
-        show_env(w, temp, vpd, stress, auto_on)
+        show_env(w, temp, temp_src, vpd, stress, auto_on)
         tick()
         gap = time.ticks_diff(now, t_send)
         if gap >= SEND_MS or (send_now and gap >= MIN_GAP_MS):   # ตามรอบ หรือมีเหตุการณ์ใหม่
@@ -636,7 +669,9 @@ def main():
             wait = max(0, auto_total - time.ticks_diff(now, t_auto)) // 1000 if auto_on else 0
             extra = {"temp_c": round(temp, 1), "vpd": round(vpd, 2), "stress": stress,
                      "auto": 1 if auto_on else 0, "auto_wait": wait, "auto_sec": AUTO_SEC,
-                     "src": "VR3" if manual else "VR1", "dry": RH_DRY, "wet": RH_WET}
+                     "src": "VR3" if manual else "VR1", "dry": RH_DRY, "wet": RH_WET,
+                     "temp_src": temp_src, "sensor_err": _temp_err,
+                     "sim": "soil tank" + ("" if temp_src == "SHT40" else " temp_c")}   # sim = คีย์ที่มาจากลูกบิดจำลอง
             if not send_report(n, rh, tank, pump_ms, bursts, rh_min, extra):
                 stop(w, pump, "สายหลุด")
         if not mqtt.is_connected():
