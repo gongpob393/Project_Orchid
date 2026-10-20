@@ -74,8 +74,10 @@ footer{max-width:980px;margin:auto;padding:12px 14px 24px;color:var(--dim);font-
       <div><b id="t_tank">--</b><span>ถังหมอก</span></div>
       <div><b id="t_pump">--</b><span>หัวพ่น</span></div>
       <div><b id="t_temp">--</b><span>อุณหภูมิ</span></div>
+      <div><b id="t_vpd">--</b><span>VPD (kPa)</span></div>
       <div><b id="t_stress">--</b><span>ความเครียดพืช</span></div>
     </div>
+    <p class="dim" id="t_envnote" style="color:var(--am)"></p>
   </section>
   <section class="card">
     <h2>สั่งงาน</h2>
@@ -94,7 +96,8 @@ footer{max-width:980px;margin:auto;padding:12px 14px 24px;color:var(--dim);font-
     <p class="dim">รายงานล่าสุด <span id="t_age">--</span></p>
   </section>
   <section class="card wide">
-    <h2>กราฟประวัติความชื้น <span id="c_now" class="dim"></span></h2>
+    <h2>กราฟประวัติ <span id="c_now" class="dim"></span></h2>
+    <div class="tabs"><button class="btn on" data-m="rh">ความชื้น %</button><button class="btn" data-m="temp">อุณหภูมิ °C</button><button class="btn" data-m="vpd">VPD kPa</button></div>
     <svg id="chart" viewBox="0 0 400 150" role="img" aria-label="กราฟประวัติ"></svg>
     <p class="dim" id="c_span">รอข้อมูล</p>
   </section>
@@ -105,14 +108,15 @@ footer{max-width:980px;margin:auto;padding:12px 14px 24px;color:var(--dim);font-
   </section>
 </main>
 <footer>
-  <p>เกณฑ์ความชื้นเป็นค่าสาธิตในห้องเรียน ไม่ใช่คำแนะนำทางเกษตร</p>
+  <p>VPD = ส่วนต่างความดันไอน้ำ (ยิ่งสูง พืชคายน้ำเร็ว) เกณฑ์ความชื้นและความเครียดเป็นค่าสาธิตในห้องเรียน ไม่ใช่คำแนะนำทางเกษตร</p>
   <p>หน้านี้เป็นจุดเริ่มต้นเท่านั้น ห้ามส่งตามนี้ ทีมต้องต่อยอดเองอย่างน้อย 3 อย่าง (ดู PROJECT_BRIEF_lite_th.md)</p>
 </footer>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js"
         integrity="sha384-9WWboT9UtuPFRlOLq4FygQkcJxzYcpz8SXGkNyCEXM+44n14xzjNlrRKYZwuF/A6" crossorigin="anonymous"></script>
 <script>
 "use strict";
-const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt", ROOT = "bento-aiot";
+const _b = new URLSearchParams(location.search).get("broker");   // ตัวเลือก: ?broker=wss://... (ต้องตรงกับ BROKER ในโค้ดบอร์ด)
+const BROKER_URL = _b && /^wss:\/\//.test(_b) ? _b : "wss://broker.hivemq.com:8884/mqtt", ROOT = "bento-aiot";
 let RH_DRY = 60, RH_WET = 75;                 // บอร์ดส่ง dry/wet มาทับให้เอง
 const DRY_RUN = 3, HIST = 900, NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
@@ -154,6 +158,8 @@ function drawChart() {
   const g = $("chart"); g.replaceChildren();
   const W = 400, H = 150, P = 28, vals = hist.map((h) => h[metric]).filter((v) => v !== null);
   let lo = 0, hi = 100;
+  if (metric === "temp" && vals.length) { lo = Math.floor(Math.min(...vals) - 2); hi = Math.ceil(Math.max(...vals) + 2); }
+  if (metric === "vpd") hi = Math.max(2, Math.ceil(Math.max(0, ...vals) * 2) / 2);
   const X = (i) => P + (W - P - 6) * (hist.length < 2 ? 0 : i / (hist.length - 1));
   const Y = (v) => H - 18 - (H - 28) * (v - lo) / (hi - lo || 1);
   for (let k = 0; k <= 4; k++) {
@@ -170,6 +176,10 @@ function drawChart() {
   $("c_span").textContent = hist.length > 1 ? "ย้อนหลัง " + Math.max(1, Math.round((hist[hist.length - 1].t - hist[0].t) / 60000)) + " นาที (" + hist.length + " จุด) เส้นประ = เกณฑ์แห้ง/ชื้นเกิน" : "รอข้อมูล";
 }
 
+document.querySelectorAll(".tabs .btn").forEach((b) => b.onclick = () => {
+  metric = b.dataset.m; document.querySelectorAll(".tabs .btn").forEach((x) => x.classList.toggle("on", x === b)); drawChart();
+});
+
 // ---- สถิติรายวัน (เก็บใน localStorage ต่อทีมต่อวัน) ----
 const blank = () => ({ watch: 0, dry: 0, ok: 0, wet: 0, pump: 0, bursts: 0, rhMin: null, rhMax: null, tMax: null, vpdMax: null, hard: 0 });
 let day = blank(), dayId = "";
@@ -183,7 +193,9 @@ function renderDay() {
   const tot = day.dry + day.ok + day.wet, mm = (a, b) => a === null ? "--" : a + "–" + b;
   const cells = [["เวลาที่เฝ้าดู", fmt(day.watch)], ["อยู่ในช่วงพอดี", tot ? Math.round(100 * day.ok / tot) + " %" : "--"],
     ["เวลาที่แห้ง", fmt(day.dry)], ["เวลาที่ชื้นเกิน", fmt(day.wet)], ["พ่นหมอก", day.bursts + " ครั้ง"], ["เวลาพ่นรวม", fmt(day.pump)],
-    ["ความชื้น ต่ำ–สูง", mm(day.rhMin, day.rhMax) + (day.rhMin === null ? "" : " %")]];
+    ["ความชื้น ต่ำ–สูง", mm(day.rhMin, day.rhMax) + (day.rhMin === null ? "" : " %")],
+    ["อุณหภูมิสูงสุด", day.tMax === null ? "--" : day.tMax + " °C"], ["VPD สูงสุด", day.vpdMax === null ? "--" : day.vpdMax + " kPa"],
+    ["เวลาเครียดหนัก", fmt(day.hard)]];
   $("daily").innerHTML = cells.map(([l, v]) => `<div><b>${v}</b><span>${l}</span></div>`).join("");
   $("d_date").textContent = dayId;
 }
@@ -253,8 +265,13 @@ function onTelemetry(d) {
   $("t_tank").style.color = tank !== null && tank < 10 ? "var(--rd)" : "";
   $("t_pump").textContent = pump === null ? "--" : pump ? "พ่นอยู่" : "หยุด";
   $("t_temp").textContent = temp === null ? "--" : temp + " °C";
+  $("t_vpd").textContent = vpd === null ? "--" : vpd;
   const st = stress === null ? null : STRESS[stress];
   $("t_stress").textContent = st ? st[0] : "--"; $("t_stress").style.color = st ? st[1] : "";
+  // บอกเหตุผลเมื่อไม่มีค่า: บอร์ดไม่ส่งคีย์เลย = โค้ดเวอร์ชันเก่า · ส่งมาเป็น null = อ่าน SHT40 ไม่ได้
+  $("t_envnote").textContent = !("temp_c" in d) ? "บอร์ดยังไม่ส่งอุณหภูมิ: น่าจะยังรันโค้ดเวอร์ชันเก่า ให้อัปโหลด idea_16_orchid_mist.py ล่าสุดลงบอร์ด"
+    : temp === null ? "บอร์ดอ่านเซนเซอร์ SHT40 ไม่ได้" + (d.sensor_err ? " (" + String(d.sensor_err).slice(0, 24) + ")" : "") + " · ดูข้อความบนจอบอร์ด"
+    : d.temp_src === "VR2" ? "อุณหภูมิเป็นค่าจำลองจาก VR2 เพราะบอร์ดอ่านเซนเซอร์ SHT40 ไม่ได้" + (d.sensor_err ? " (" + String(d.sensor_err).slice(0, 24) + ")" : "") : "";
   showAuto(auto, wait, src);
   // สถิติรายวัน
   if (dkey() !== dayId) { saveDay(); loadDay(); }
@@ -266,9 +283,12 @@ function onTelemetry(d) {
   if (pump === 1) day.pump += dt;
   if (count !== null && lastCount !== null && count > lastCount) day.bursts += count - lastCount;
   if (count !== null) lastCount = count;
+  if (temp !== null) day.tMax = day.tMax === null ? temp : Math.max(day.tMax, temp);
+  if (vpd !== null) day.vpdMax = day.vpdMax === null ? vpd : Math.max(day.vpdMax, vpd);
+  if (stress === 2) day.hard += dt;
   saveDay(); renderDay();
   // ประวัติ + กราฟ
-  hist.push({ t: now, rh }); if (hist.length > HIST) hist.shift(); drawChart();
+  hist.push({ t: now, rh, temp, vpd }); if (hist.length > HIST) hist.shift(); drawChart();
   // แนะนำพ่น: แห้งติดกัน DRY_RUN รายงาน ไม่ได้พ่นอยู่ และไม่ได้เปิดพ่นอัตโนมัติ
   dryStreak = rh !== null && rh < RH_DRY ? dryStreak + 1 : 0;
   const advise = dryStreak >= DRY_RUN && pump === 0 && auto !== 1;
@@ -306,12 +326,15 @@ function downloadCsv() {
 function connect() {
   team = $("team").value.trim();
   if (!/^team[0-9a-z_]{2,20}$/.test(team) || team === "team00") { setStatus("ใส่เลขทีม เช่น team05", false); return; }
+  if (typeof mqtt === "undefined") { setStatus("โหลดไลบรารี MQTT ไม่ได้ (เน็ตหลุด หรือเครือข่ายบล็อก cdn.jsdelivr.net) ลองเปลี่ยนเครือข่ายแล้วรีเฟรช", false); return; }
   if (client) client.end(true);
   lastCount = null; lastAt = 0; autoOn = null; loadDay(); renderDay();
   client = mqtt.connect(BROKER_URL, { clientId: "idea16-web-" + Math.random().toString(16).slice(2, 10), connectTimeout: 20000 });
   setStatus("กำลังต่อ...", false);
-  client.on("connect", () => { setStatus("ต่อแล้ว " + ROOT + "/" + team, true); client.subscribe(ROOT + "/" + team + "/#"); });
-  client.on("close", () => setStatus("หลุด กำลังต่อใหม่...", false));
+  const tmo = setTimeout(() => { if (client && !client.connected) setStatus("ต่อ broker ไม่ได้ภายใน 20 วินาที: เครือข่ายนี้อาจบล็อก WebSocket (พอร์ต 8884) ลองใช้ 4G หรือ Hotspot มือถือ", false); }, 20000);
+  client.on("connect", () => { clearTimeout(tmo); setStatus("ต่อแล้ว " + ROOT + "/" + team, true); client.subscribe(ROOT + "/" + team + "/#"); });
+  client.on("error", (e) => setStatus("ต่อไม่ได้: " + (e && e.message ? e.message : e), false));
+  client.on("close", () => { if (!client || !client.connected) setStatus("หลุด กำลังต่อใหม่...", false); });
   client.on("message", (topic, payload) => {
     let d = null; try { d = JSON.parse(payload.toString()); } catch (e) { d = null; }
     if (topic.endsWith("/telemetry") && d && typeof d === "object" && !Array.isArray(d)) onTelemetry(d);
